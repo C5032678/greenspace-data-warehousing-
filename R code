@@ -1,0 +1,322 @@
+library(tidyverse)
+library(data.table)
+library(lubridate)
+library(dplyr)
+
+
+# load the dataset
+df_pan <- read_csv('data_only.csv')
+
+# inspect rows and columns before cleaning 
+initial_row_count <- nrow(df_pan)
+cat("Initial number of rows: ", initial_row_count, "\n")
+cat("Initial number of columns: ", ncol(df_pan), "\n")
+cat("Initial column names:\n")
+print(names(df_pan))
+
+# creating a subset of selected columns
+df_pan1 <- df_pan %>% 
+  select(Respondent_ID, M1_Q1, M2A_Q7, M2A_Q8B, M2B_Q2_1, M2B_Q2_2, M2B_Q2_3, M2B_Q2_4, M2B_Q2_5, M2B_Q2_6, M2B_Q2_7, 
+         M2B_Q2_8, M2B_Q2_9, M2B_Q2_10, M2B_Q2_11, M2B_Q2_12, M2B_Q2_13, M2B_Q2_14, M2B_Q2_15, M2B_Q2_16, 
+         M2B_Q2_Other, M2B_Q6, M2B_Q7, Wellbeing_satisfied, Wellbeing_worthwhile, Wellbeing_happy, 
+         Wellbeing_worried, Wellbeing_anxious, Interview_Date)
+cat("Final column names:\n", names(df_pan1), "\n")
+
+# variables classes 
+cat("Column classes before transforming:\n")
+print(sapply(df_pan1, class))
+
+# ID to character
+df_pan1$Respondent_ID <- as.character(df_pan1$Respondent_ID) 
+
+
+cat("\nChecking for Duplicates:\n")
+
+
+# checking duplicate rates
+
+n_total <- nrow(df_pan1)
+n_unique <- nrow(distinct(df_pan1))
+dup_rows <- n_total - n_unique
+dup_rate <- (dup_rows / n_total) * 100
+cat("Number of duplicate rows:", dup_rows)
+cat("Percentage of duplicate rows:", dup_rate) 
+
+# checking duplicates based on ID
+key_cols <- c("Respondent_ID")
+# duplicate percentage
+n_total <- nrow(df_pan1)
+n_unique <- uniqueN(df_pan1, by = key_cols)
+dup_rows <- n_total - n_unique
+dup_rate <- dup_rows / n_total * 100
+cat(sprintf("Duplicates: %d (%.2f%%) based on ID: %s\n",
+            dup_rows, dup_rate, paste(key_cols, collapse = ", ")))
+
+
+# Resolution: Remove duplicates based on full duplicate rows - high number of matching primary keys implies respondents answered multiple times on different days
+#full matching has same interview date - due to there only being 0.046 the decision has been made to remove them
+df_pan1 <- df_pan1 %>% distinct(.keep_all = TRUE)
+
+n_total <- nrow(df_pan1)
+n_unique <- nrow(distinct(df_pan1))
+dup_rows <- n_total - n_unique
+dup_rate <- (dup_rows / n_total) * 100
+cat("Number of duplicate rows:", dup_rows)
+cat("Percentage of duplicate rows:", dup_rate) 
+
+# extract year to a new column
+df_pan1$entry_year <- format(as.Date(df_pan1$Interview_Date, format="%d/%m/%Y"),"%Y")
+# check output
+print(head(df_pan1$entry_year))
+print(sapply(df_pan1, class))
+# year to integer
+df_pan1$entry_year <- as.integer(df_pan1$entry_year)
+print(sapply(df_pan1, class))
+
+df_pan1 <- rename(df_pan1, activity = M2A_Q8B)
+
+# inputting scale numbers for ordinal variables
+df_pan1$frequency[df_pan1$M1_Q1 == "Never"] <- 1
+df_pan1$frequency[df_pan1$M1_Q1 == "Less often"] <- 2
+df_pan1$frequency[df_pan1$M1_Q1 == "Once every 2-3 months"] <- 3
+df_pan1$frequency[df_pan1$M1_Q1 == "Once or twice a month"] <- 4
+df_pan1$frequency[df_pan1$M1_Q1 == "Once a week"] <- 5
+df_pan1$frequency[df_pan1$M1_Q1 == "Twice a week"] <- 6
+df_pan1$frequency[df_pan1$M1_Q1 == "More than twice a week, but not every day"] <- 7
+df_pan1$frequency[df_pan1$M1_Q1 == "Every day"] <- 8
+
+df_pan1 <- rename(df_pan1, frequency_lab = M1_Q1)
+df_pan1$frequency <- as.integer(df_pan1$frequency)
+
+view(df_pan1)
+
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Up to 30 minutes"] <- 1
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Over 30 minutes and up to an hour"] <- 2
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Over 1 hour and up to 2 hours"] <- 3
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Over 2 hours and up to 3 hours"] <- 4
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Over 3 hours and up to 5 hours"] <- 5
+df_pan1$visit_length[df_pan1$M2A_Q7 == "Over 5 hours"] <- 6
+
+df_pan1 <- rename(df_pan1, visit_length_lab = M2A_Q7)
+df_pan1$visit_length <- as.integer(df_pan1$visit_length)
+
+df_pan1$M2B_Q6[df_pan1$M2B_Q6 =="Very difficult"] <- 1
+df_pan1$M2B_Q6[df_pan1$M2B_Q6 =="Fairly difficult"] <- 2
+df_pan1$M2B_Q6[df_pan1$M2B_Q6 =="Neither easy nor difficult"] <- 3
+df_pan1$M2B_Q6[df_pan1$M2B_Q6 =="Fairly easy"] <- 4
+df_pan1$M2B_Q6[df_pan1$M2B_Q6 =="Very easy"] <- 5
+
+df_pan1$M2B_Q7[df_pan1$M2B_Q7 =="Very difficult"] <- 1
+df_pan1$M2B_Q7[df_pan1$M2B_Q7 =="Fairly difficult"] <- 2
+df_pan1$M2B_Q7[df_pan1$M2B_Q7 =="Neither easy nor difficult"] <- 3
+df_pan1$M2B_Q7[df_pan1$M2B_Q7 =="Fairly easy"] <- 4
+df_pan1$M2B_Q7[df_pan1$M2B_Q7 =="Very easy"] <- 5
+
+df_pan1$M2B_Q6 <- as.integer(df_pan1$M2B_Q6)
+df_pan1$M2B_Q7 <- as.integer(df_pan1$M2B_Q7)
+df_pan1$ease_lab <- rowSums(df_pan1[, c("M2B_Q6", "M2B_Q7")], na.rm = TRUE)
+
+df_pan1$ease_lab[df_pan1$ease_lab == 0] <- NA
+
+df_pan1$ease_lab <- cut(
+  df_pan1$ease_lab,
+  breaks = c(0, 2, 4, 6, 8, 10), 
+  labels = c("Very difficult", "Fairly difficult", "Neither easy nor difficult", "Fairly easy", "Very easy"),
+  right = TRUE
+)
+
+df_pan1$ease_lab <- as.character(df_pan1$ease_lab)
+
+df_pan1$ease[df_pan1$ease_lab =="Very difficult"] <- 1
+df_pan1$ease[df_pan1$ease_lab =="Fairly difficult"] <- 2
+df_pan1$ease[df_pan1$ease_lab =="Neither easy nor difficult"] <- 3
+df_pan1$ease[df_pan1$ease_lab =="Fairly easy"] <- 4
+df_pan1$ease[df_pan1$ease_lab =="Very easy"] <- 5
+
+df_pan1$ease <- as.integer(df_pan1$ease)
+
+
+view(df_pan1)
+
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "0 – Not at all"] <- 1
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "1"] <- 2
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "2"] <- 3
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "3"] <- 4
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "4"] <- 5
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "5"] <- 6
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "6"] <- 7
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "7"] <- 8
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "8"] <- 9
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "9"] <- 10
+df_pan1$Wellbeing_satisfied[df_pan1$Wellbeing_satisfied == "10 – Completely"] <- 11
+
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "0 – Not at all"] <- 1
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "1"] <- 2
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "2"] <- 3
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "3"] <- 4
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "4"] <- 5
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "5"] <- 6
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "6"] <- 7
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "7"] <- 8
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "8"] <- 9
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "9"] <- 10
+df_pan1$Wellbeing_worthwhile[df_pan1$Wellbeing_worthwhile == "10 – Completely"] <- 11
+
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "0 – Not at all"] <- 1
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "1"] <- 2
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "2"] <- 3
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "3"] <- 4
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "4"] <- 5
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "5"] <- 6
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "6"] <- 7
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "7"] <- 8
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "8"] <- 9
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "9"] <- 10
+df_pan1$Wellbeing_happy[df_pan1$Wellbeing_happy == "10 – Completely"] <- 11
+
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "0 – Not at all"] <- 11
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "1"] <- 10
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "2"] <- 9
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "3"] <- 8
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "4"] <- 7
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "5"] <- 6
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "6"] <- 5
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "7"] <- 4
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "8"] <- 3
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "9"] <- 2
+df_pan1$Wellbeing_worried[df_pan1$Wellbeing_worried == "10 – Completely"] <- 1
+
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "0 – Not at all"] <- 11
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "1"] <- 10
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "2"] <- 9
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "3"] <- 8
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "4"] <- 7
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "5"] <- 6
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "6"] <- 5
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "7"] <- 4
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "8"] <- 3
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "9"] <- 2
+df_pan1$Wellbeing_anxious[df_pan1$Wellbeing_anxious == "10 – Completely"] <- 1
+
+df_pan1 <- df_pan1 %>%
+  mutate(Wellbeing_merge = coalesce(Wellbeing_anxious, Wellbeing_worried))
+df_pan1 <- subset(df_pan1, select = -c(Wellbeing_anxious, Wellbeing_worried))
+
+df_pan1$Wellbeing_merge <- as.numeric(df_pan1$Wellbeing_merge)
+df_pan1$Wellbeing_happy <- as.numeric(df_pan1$Wellbeing_happy)
+df_pan1$Wellbeing_worthwhile <- as.numeric(df_pan1$Wellbeing_worthwhile)
+df_pan1$Wellbeing_satisfied <- as.numeric(df_pan1$Wellbeing_satisfied)
+
+df_pan1$wellbeing_lab <- rowSums(df_pan1[, c("Wellbeing_merge", "Wellbeing_happy", "Wellbeing_worthwhile", "Wellbeing_satisfied")], na.rm = TRUE)
+
+df_pan1$wellbeing_lab[df_pan1$wellbeing_lab == 0] <- NA
+
+df_pan1$wellbeing_lab <- cut(
+  df_pan1$wellbeing_lab,
+  breaks = c(0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44), 
+  labels = c("10 – Completely", "9", "8", "7", "6", "5", "4", "3", "2", "1", "0 – Not at all"),
+  right = TRUE
+)
+
+df_pan1$wellbeing_lab <- as.character(df_pan1$wellbeing_lab)
+
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "0 – Not at all"] <- 1
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "1"] <- 2
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "2"] <- 3
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "3"] <- 4
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "4"] <- 5
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "5"] <- 6
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "6"] <- 7
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "7"] <- 8
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "8"] <- 9
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "9"] <- 10
+df_pan1$wellbeing[df_pan1$wellbeing_lab == "10 – Completely"] <- 11
+
+df_pan1$wellbeing <- as.integer(df_pan1$wellbeing)
+
+cols <- c("M2B_Q2_1", "M2B_Q2_2", "M2B_Q2_3", "M2B_Q2_4", "M2B_Q2_5", "M2B_Q2_6", "M2B_Q2_7", 
+"M2B_Q2_8", "M2B_Q2_9", "M2B_Q2_10", "M2B_Q2_11", "M2B_Q2_12", "M2B_Q2_13", "M2B_Q2_14", "M2B_Q2_15", "M2B_Q2_16", 
+"M2B_Q2_Other")
+
+is_yes <- !is.na(df_pan1[cols]) & df_pan1[cols] == "Yes"
+has_yes <-rowSums(is_yes) > 0 
+df_pan1$barriers <- NA_character_
+df_pan1$barriers[has_yes] <- cols[max.col(is_yes[has_yes, , drop = FALSE], ties.method = "first")]
+
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_1"] <- "Bad / poor weather"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_2"] <- "Poor physical health (or illness)"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_3"] <- "Poor mental health or well-being"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_4"] <- "Lack of facilities and access points for those with disabilities"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_5"] <- "Too busy at home"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_6"] <- "Too busy at work / with family commitments"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_7"] <- "Not interested"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_8"] <- "Prefer to do other leisure activities"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_9"] <- "Fear / worry about crime or anti-social behaviour"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_10"] <- "Fear / worry about getting hurt or injured"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_11"] <- "Nowhere near me is nice enough to spend my free time in"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_12"] <- "Cost / too expensive"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_13"] <- "Stayed at home to stop coronavirus spreading / Government restrictions"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_14"] <- "No particular reason"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_15"] <- "Don’t know"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_16"] <- "Prefer not to say"
+df_pan1$barriers[df_pan1$barriers == "M2B_Q2_Other"] <- "Other"
+  
+df_pan1 <- subset(df_pan1, select = -c(Wellbeing_happy, Wellbeing_merge, Wellbeing_worthwhile, Wellbeing_satisfied, M2B_Q6, M2B_Q7, Interview_Date, M2B_Q2_1, M2B_Q2_2, M2B_Q2_3, M2B_Q2_4, M2B_Q2_5, M2B_Q2_6, M2B_Q2_7, 
+                                       M2B_Q2_8, M2B_Q2_9, M2B_Q2_10, M2B_Q2_11, M2B_Q2_12, M2B_Q2_13, M2B_Q2_14, M2B_Q2_15, M2B_Q2_16, 
+                                       M2B_Q2_Other))
+
+view(df_pan1)
+
+# one "not known" value for missing answers
+df_pan1[df_pan1 == "Prefer not to say"] <- NA
+df_pan1[df_pan1 == "Don't know"] <- NA
+
+view(df_pan1)
+
+
+cat("\nDealing with Missing Values\n")
+
+
+# viewing a summary of the data set
+cat("Data set summary:\n")
+summary(df_pan1)
+
+cat("Count of NA values in the data set:\n")
+sum(is.na(df_pan1))
+
+
+
+cat("\nTesting Data Validity\n")
+
+
+# validating years - are they between 2020 and 2025
+invalid_years <- sum(!df_pan1$entry_year %in% 2020:2025, na.rm = TRUE)
+if(invalid_years == 0) {
+  cat("Year range is valid. All years are between 2020 and 2025.\n")
+} else {
+  cat("Year range is invalid. Years found outside of the 2020 to 2025 range: ", invalid_years, "\n")
+}
+
+
+df_pan1$entry_id <- seq_len(nrow(df_pan1))
+df_pan1$entry_id <- as.character(df_pan1$entry_id)
+df_pan1 <- subset(df_pan1, select = -c(Respondent_ID))
+
+
+# validating classes of variables to ensure they are suitable for Apache Hive
+cat("Column classes following transformations:\n")
+print(sapply(df_pan1, class))
+
+
+cat("\nData cleaning pipeline summary\n")
+
+
+final_row_count <- nrow(df_pan1) 
+cat("Data to be exported to the data mart: ", final_row_count, "\n")
+cat("Total data retained: ", (final_row_count / initial_row_count) * 100, "%\n")
+
+# export clean files 
+write_csv(df_pan1, "clean_pan.csv", na = "")
+
+cat("\nData quality checks and cleansing complete.\n")
+view(df_pan1)
