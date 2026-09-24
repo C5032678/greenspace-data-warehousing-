@@ -1,0 +1,213 @@
+CREATE DATABASE IF NOT EXISTS pan_datamart;
+ 
+USE pan_datamart;
+
+DROP TABLE IF EXISTS pan_data; 
+DROP TABLE IF EXISTS dim_year; 
+DROP TABLE IF EXISTS dim_frequency; 
+DROP TABLE IF EXISTS dim_ease; 
+DROP TABLE IF EXISTS dim_visit; 
+DROP TABLE IF EXISTS dim_barrier; 
+DROP TABLE IF EXISTS fact_table; 
+
+CREATE TABLE IF NOT EXISTS pan_data (
+    frequency_lab STRING,
+    visit_length_lab STRING,
+    activity STRING, 
+    entry_year STRING,
+    frequency STRING,
+    visit_length STRING,
+    ease_lab STRING,
+    ease STRING,
+    wellbeing_lab STRING,
+    wellbeing STRING,
+    barrier STRING, 
+    entry_id STRING
+)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde' WITH SERDEPROPERTIES ( "separatorChar" = ",", "quoteChar" = "\"", "escapeChar" = "\\" ) 
+STORED AS TEXTFILE
+TBLPROPERTIES ('skip.header.line.count'='1');
+
+LOAD DATA INPATH '/diss/input/clean_pan.csv' INTO TABLE pan_data;
+
+
+CREATE TABLE IF NOT EXISTS dim_year (
+  year_id INT,
+  year_value INT,
+  CONSTRAINT pk_year PRIMARY KEY (year_id) DISABLE NOVALIDATE RELY
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+INSERT OVERWRITE TABLE dim_year 
+SELECT 
+  99 AS year_id, 
+  99 AS year_value
+UNION ALL
+SELECT DISTINCT 
+  CAST(entry_year AS INT) AS year_id,
+  CAST(entry_year AS INT) AS year_value
+FROM pan_data
+WHERE entry_year IS NOT NULL 
+  AND TRIM(entry_year) <> '' ;
+
+
+
+CREATE TABLE IF NOT EXISTS dim_frequency (
+  frequency_id INT,
+  frequency_value STRING,
+  CONSTRAINT pk_frequency PRIMARY KEY (frequency_id) DISABLE NOVALIDATE RELY
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+INSERT OVERWRITE TABLE dim_frequency 
+SELECT 
+  99 AS frequency_id, 
+  'NA' AS frequency_value
+UNION ALL
+SELECT DISTINCT 
+  CAST(frequency AS INT)  AS frequency_id,
+  TRIM(frequency_lab) AS frequency_value
+FROM pan_data
+WHERE frequency IS NOT NULL 
+  AND TRIM(frequency) <> '' ;
+
+
+
+CREATE TABLE IF NOT EXISTS dim_ease (
+  ease_id INT,
+  ease_value STRING,
+  CONSTRAINT pk_ease PRIMARY KEY (ease_id) DISABLE NOVALIDATE RELY
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+INSERT OVERWRITE TABLE dim_ease
+SELECT 
+99 AS ease_id, 
+'NA' AS ease_value
+UNION ALL
+SELECT DISTINCT 
+  CAST(ease AS INT)  AS ease_id,
+  TRIM(ease_lab) AS ease_value
+FROM pan_data
+WHERE ease IS NOT NULL 
+  AND TRIM(ease) <> '' ;
+
+
+CREATE TABLE IF NOT EXISTS dim_visit (
+    visit_id INT,
+    activity STRING,
+    length_value STRING,
+    length_id INT,
+CONSTRAINT pk_visit PRIMARY KEY (visit_id) DISABLE NOVALIDATE RELY
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+
+INSERT OVERWRITE TABLE dim_visit 
+SELECT 
+  99 AS visit_id, 
+  'NA' AS activity, 
+  'NA' AS length_value, 
+  99 AS length_id
+UNION ALL
+SELECT 
+  CAST(ROW_NUMBER() OVER (ORDER BY length_id ASC, activity ASC) AS INT) AS visit_id,
+  activity,
+  length_value,
+  length_id
+FROM (
+  SELECT DISTINCT 
+    TRIM(activity) AS activity, 
+    TRIM(visit_length_lab) AS length_value, 
+    CAST(visit_length AS INT) AS length_id
+  FROM pan_data
+  WHERE activity IS NOT NULL 
+    AND TRIM(activity) <> ''
+) v;
+
+
+
+CREATE TABLE IF NOT EXISTS dim_barrier (
+  barrier_id INT,
+  barrier_value STRING,
+  CONSTRAINT pk_barrier PRIMARY KEY (barrier_id) DISABLE NOVALIDATE RELY
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+
+INSERT OVERWRITE TABLE dim_barrier 
+SELECT 
+  99 AS barrier_id, 
+  'NA' AS barrier_value
+UNION ALL
+SELECT 
+  CAST(ROW_NUMBER() OVER (ORDER BY barrier_value ASC) AS INT) AS barrier_id,
+  barrier_value
+FROM (
+  SELECT DISTINCT 
+    TRIM(barrier) AS barrier_value
+  FROM pan_data
+  WHERE barrier IS NOT NULL
+    AND TRIM(barrier) <> ''
+) b;
+
+
+CREATE TABLE IF NOT EXISTS fact_table (
+    entry_id STRING,
+    year_id INT,
+    frequency_id INT,
+    ease_id INT,
+    visit_id INT,
+    barrier_id INT,
+    wellbeing INT
+)
+STORED AS PARQUET
+TBLPROPERTIES (
+  'parquet.compression'='SNAPPY',
+  'skip.header.line.count'='1'
+);
+
+
+INSERT OVERWRITE TABLE fact_table 
+SELECT 
+  TRIM(p.entry_id) AS entry_id,
+  COALESCE(CAST(p.entry_year AS INT), 99) AS year_id,
+  COALESCE(CAST(p.frequency AS INT), 99) AS frequency_id,
+  COALESCE(CAST(p.ease AS INT), 99) AS ease_id,
+  COALESCE(v.visit_id, 99) AS visit_id,
+  COALESCE(b.barrier_id, 99) AS barrier_id,
+  COALESCE(CAST(p.wellbeing AS INT), 99) AS wellbeing
+FROM pan_data p
+LEFT JOIN 
+  dim_visit v ON TRIM(p.activity) = v.activity AND CAST(p.visit_length AS INT) = v.length_id
+LEFT JOIN 
+  dim_barrier b ON TRIM(p.barrier) = b.barrier_value;
+
+
+select * from fact_table limit 20;
+select * from pan_data limit 20;
+select * from dim_year limit 20;
+select * from dim_frequency limit 20;
+select * from dim_ease limit 20;
+select * from dim_visit limit 20;
+select * from dim_barrier limit 20;
